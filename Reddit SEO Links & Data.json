@@ -1,0 +1,1153 @@
+{
+  "name": "Reddit SEO Links & Data",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "03831846-9533-4f96-857c-17935402120e",
+              "leftValue": "={{ $json.Link }}",
+              "rightValue": "/s/",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1856,
+        352
+      ],
+      "id": "dfd36015-87e2-4171-be52-2ada7f38cdf4",
+      "name": "Check if Short Link"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.item.json.data;\n// Берем строго из текущего элемента Loop\nconst originalLink = $('Loop: Links').item.json.Link;\nlet finalLink = originalLink; \n\n// Если HTML пустой, отдаем оригинал\nif (!html || typeof html !== 'string') {\n    return { json: { Link: finalLink } };\n}\n\n// 1. Ищем редирект (Moved Permanently)\nconst redirectMatch = html.match(/<a\\s+[^>]*href=[\"'](https?:\\/\\/[^\"']+)[\"'][^>]*>/i);\n\n// 2. Ищем Canonical и Shreddit (обычно они ссылаются на ПОСТ)\nconst canonicalMatch = html.match(/<link\\s+rel=\"canonical\"\\s+href=\"([^\"]+)\"/i);\nconst shredditMatch = html.match(/id=\"canonical-url-updater\"[^>]*value=\"([^\"]+)\"/i);\n\n// --- ЛОГИКА ВЫБОРА БАЗОВОЙ ССЫЛКИ ---\nif (html.length < 5000 && redirectMatch && redirectMatch[1]) {\n    finalLink = redirectMatch[1];\n} else {\n    if (shredditMatch && shredditMatch[1]) {\n        finalLink = shredditMatch[1];\n    } else if (canonicalMatch && canonicalMatch[1]) {\n        finalLink = canonicalMatch[1];\n    } else if (redirectMatch && redirectMatch[1]) {\n        finalLink = redirectMatch[1];\n    }\n}\n\n// === ФИКС ДЛЯ КОММЕНТАРИЕВ (ИСПРАВЛЕННЫЙ) ===\n// Ищем preload или partial ссылки, которые содержат ID комментария.\n// Паттерн: .../comments/.../.../COMMENT_ID?\n// Мы ищем строку, где после /comments/ идет что угодно, а в конце перед '?' стоит ID\nconst commentDeepLinkMatch = html.match(/\\/svc\\/shreddit\\/comments\\/.*?\\/([a-z0-9]{7,})\\?/i);\n\nif (commentDeepLinkMatch && commentDeepLinkMatch[1]) {\n    const commentId = commentDeepLinkMatch[1];\n    \n    // Если мы нашли ID, и его НЕТ в текущей finalLink - добавляем принудительно\n    if (finalLink && !finalLink.includes(commentId)) {\n        // Чистим от мусора\n        finalLink = finalLink.split('?')[0];\n        \n        // Убираем лишний слеш если есть\n        if (finalLink.endsWith('/')) {\n            finalLink = finalLink.slice(0, -1);\n        }\n        \n        // Добавляем ID коммента\n        finalLink = `${finalLink}/${commentId}/`;\n    }\n}\n// ===========================================\n\n// Финальная зачистка\nif (finalLink) {\n    finalLink = finalLink.replace(/&amp;/g, '&').split('#')[0];\n    if (!finalLink.startsWith('http')) {\n        finalLink = originalLink;\n    }\n}\n\nreturn { json: { Link: finalLink } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1040,
+        160
+      ],
+      "id": "aebec275-b658-451f-b358-8b86bfaf7e8d",
+      "name": "Extract Real URL",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d06d3342-0ec0-4125-8a07-edf372db8565",
+              "leftValue": "={{ $json['Link'] }}",
+              "rightValue": "={{ $json['Link '] }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c351c99a-cc30-43bd-ad43-ae5724295f34",
+              "leftValue": "={{ $json['Actual comment'] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -2336,
+        336
+      ],
+      "id": "806bca42-8452-458c-931c-9f5bf31271f7",
+      "name": "Filter: Unprocessed"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -2112,
+        336
+      ],
+      "id": "42868223-7b7e-47c0-bacd-fac76112f424",
+      "name": "Loop: Links"
+    },
+    {
+      "parameters": {
+        "url": "http://api.scraperapi.com",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "api_key",
+              "value": "<SCRAPERAPI_API_KEY>"
+            },
+            {
+              "name": "url",
+              "value": "={{ $json.Link.trim() }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1648,
+        176
+      ],
+      "id": "78e8a2f0-6178-4fea-ab10-7fc3c5e37c70",
+      "name": "Resolve Redirect via Scraper",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "http://api.scraperapi.com",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "api_key",
+              "value": "<SCRAPERAPI_API_KEY>"
+            },
+            {
+              "name": "url",
+              "value": "={{ $json.Link.trim().split('?')[0].replace(/\\/$/, '') }}.json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -128,
+        368
+      ],
+      "id": "eeceb437-ab86-46cc-9285-fde65533bea7",
+      "name": "Get Reddit JSON",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === ПОЛУЧЕНИЕ ДАННЫХ ===\nconst rawData = $input.item.json.data; \nconst loopItem = $('Loop: Links').item.json;\nconst rowNumber = loopItem.row_number; \n\n// --- ВАЖНЫЙ ФИКС: БЕРЕМ ССЫЛКУ ИМЕННО ОТ ТЕКУЩЕГО ИСПОЛНЕНИЯ ---\nlet linkToCheck = loopItem.Link || ''; \ntry {\n    const extracted = $('Extract Real URL').item.json.Link;\n    if (extracted && extracted.startsWith('http')) {\n        linkToCheck = extracted;\n    }\n} catch (e) {\n    // Игнорируем отсутствие ноды\n}\n\n// ЗАЩИТА ОТ ОШИБОК\nif (!rawData || typeof rawData !== 'string' || !rawData.trim().startsWith('[')) {\n     return { \n         json: { \n             row_number: rowNumber,\n             t_status: 'Error', \n             t_body: 'API Error: Invalid JSON returned', \n             ai_content: 'ERROR: Parsing failed', \n             t_date: new Date().toISOString().split('T')[0], \n             t_type: 'Error',\n             t_ups: 0, \n             t_comments: 0\n         } \n    };\n}\n\ntry {\n  const rootData = JSON.parse(rawData);\n  \n  // Переменные\n  let targetData;\n  let sheetType = 'Post'; \n  let sheetBody = '';\n  let aiContext = '';\n  let ups = 0;\n  let commentsCount = 0;\n\n  // --- ДАННЫЕ ИЗ JSON ---\n  const postInfo = rootData[0]?.data?.children[0]?.data || {};\n  let commentInfo = null;\n  if (rootData.length > 1 && rootData[1]?.data?.children?.length > 0) {\n      commentInfo = rootData[1].data.children[0].data;\n  }\n\n  // --- ЛОГИКА ОПРЕДЕЛЕНИЯ ---\n  let isComment = false;\n  if (linkToCheck.includes('/comment/')) {\n      isComment = true;\n  } else if (commentInfo && commentInfo.id && linkToCheck.includes(commentInfo.id)) {\n      isComment = true;\n  } else if (rootData.length > 1 && rootData[1]?.data?.children?.length === 1) {\n      isComment = true;\n  }\n\n  if (isComment) {\n      // === ОБРАБОТКА КОММЕНТАРИЯ ===\n      if (commentInfo) {\n          targetData = commentInfo;\n          const parentId = commentInfo.parent_id || '';\n          sheetType = parentId.startsWith('t1_') ? 'Reply' : 'Comment';\n          \n          sheetBody = (commentInfo.body || '[No body]').trim();\n          aiContext = `TYPE: ${sheetType.toUpperCase()}\\nBODY: ${sheetBody}`;\n          ups = commentInfo.ups || 0;\n          \n          if (commentInfo.replies && commentInfo.replies.data) {\n              commentsCount = commentInfo.replies.data.children.filter(c => c.kind !== 'more').length;\n          }\n      } else {\n          sheetType = 'Comment';\n          sheetBody = '[Deleted/Not Found]';\n          aiContext = 'CONTENT REMOVED';\n          targetData = { created_utc: Date.now() / 1000 };\n      }\n  } else {\n      // === ОБРАБОТКА ПОСТА ===\n      targetData = postInfo;\n      sheetType = 'Post';\n      \n      const title = (postInfo.title || '').trim();\n      const selftext = (postInfo.selftext || '').trim();\n      \n      sheetBody = `POST TITLE:\\n\\n${title}\\n\\nPOST BODY:\\n\\n${selftext}`;\n      aiContext = `TYPE: POST\\nTITLE: ${title}\\nBODY: ${selftext}`;\n      ups = postInfo.ups || 0;\n      commentsCount = postInfo.num_comments || 0;\n  }\n\n  // === СТАТУС И ДАТА (ИСПРАВЛЕНО) ===\n  const createdUtc = targetData ? targetData.created_utc : null;\n  const dateObj = createdUtc ? new Date(createdUtc * 1000) : new Date();\n  const dateFormatted = dateObj.toISOString().split('T')[0];\n\n  let sheetStatus = 'Live';\n  \n  // Приводим к нижнему регистру для надежности\n  const lowerBody = sheetBody.toLowerCase();\n\n  // ПРОВЕРКА НА УДАЛЕНИЕ\n  if (\n      lowerBody.includes('[removed]') ||       // Стандартное удаление\n      lowerBody.includes('removed by reddit') || // Твой случай: [ Removed by Reddit ]\n      lowerBody.includes('[deleted]') ||       // Удалено пользователем\n      lowerBody.includes('[unavailable]') ||   // Недоступно\n      lowerBody.includes('deleted/not found') || // Наша заглушка\n      (targetData && targetData.removed_by_category) || // Техническое поле удаления\n      (targetData && targetData.removal_reason)         // Твой случай: \"legal\"\n  ) {\n      sheetStatus = 'Removed';\n      aiContext = 'CONTENT REMOVED'; \n  }\n\n  return {\n    json: {\n      row_number: rowNumber,\n      t_date: dateFormatted,\n      t_body: sheetBody,\n      t_type: sheetType, \n      t_status: sheetStatus,\n      t_ups: ups,\n      t_comments: commentsCount,\n      ai_content: aiContext\n    }\n  };\n\n} catch (e) {\n  return { \n      json: { \n          row_number: rowNumber,\n          t_status: 'Error', \n          t_body: `Parse Error: ${e.message}`, \n          ai_content: 'ERROR: JSON Parse failed', \n          t_date: new Date().toISOString().split('T')[0],\n          t_type: 'Error',\n          t_ups: 0,\n          t_comments: 0\n      } \n  };\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        352
+      ],
+      "id": "4765124a-09db-41af-ab45-6596b0b1cb29",
+      "name": "Parse Content & Status",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1296,
+        336
+      ],
+      "id": "3d4bd685-60cc-4486-a31c-bde44a75275b",
+      "name": "Wait 5 sec",
+      "webhookId": "e6a8be97-e3be-4fd0-aa41-a467f6140620"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 15 * * 3"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -3024,
+        352
+      ],
+      "id": "c95f41a7-3d82-42a0-8ff1-e39acbba1049",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Ты технический эксперт по N8N и API интеграциям.\n\nПроизошла ошибка в узле workflow. Проанализируй её и дай краткое объяснение на русском:\n1. Что случилось (простыми словами)\n2. Почему это могло произойти\n3. Что нужно проверить/исправить\n\nОшибка:\n{{ $json.error }}\n\nФормат ответа (максимум 3-4 предложения, без markdown форматирования)."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -2768,
+        560
+      ],
+      "id": "9197c481-c077-4cf3-b8f4-e8c0e65a8d09",
+      "name": "GPT Error Analysis Read Links",
+      "credentials": {
+        "openAiApi": {
+          "id": "HeXxZmNT6spcKG3k",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "<TELEGRAM_ADMIN_CHAT_ID>",
+        "text": "=Поток {{ $workflow.name }}. Узел Read Links.\n\n📋 Ошибка:\n{{ $('Read Links').item.json.error }}\n\n🤖 Анализ ошибки:\n{{ $('GPT Error Analysis Read Links').item.json.output[0].content[0].text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2480,
+        560
+      ],
+      "id": "49cb2cda-5487-4f36-a729-d31f531e9232",
+      "name": "Send Error to Telegram (Read Links)",
+      "webhookId": "5cba5c02-61b4-409a-b3e4-1192f5932410",
+      "credentials": {
+        "telegramApi": {
+          "id": "7sX2yrucrmBdFFtS",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Ты технический эксперт по N8N и API интеграциям.\n\nПроизошла ошибка в узле workflow. Проанализируй её и дай краткое объяснение на русском:\n1. Что случилось (простыми словами)\n2. Почему это могло произойти\n3. Что нужно проверить/исправить\n\nОшибка:\n{{ $json.error }}\n\nФормат ответа (максимум 3-4 предложения, без markdown форматирования)."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -1472,
+        224
+      ],
+      "id": "227ec250-2293-4297-8cac-b44210454ee2",
+      "name": "GPT Error Analysis Resolve Redirect via Scraper",
+      "credentials": {
+        "openAiApi": {
+          "id": "HeXxZmNT6spcKG3k",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "<TELEGRAM_ADMIN_CHAT_ID>",
+        "text": "=Поток {{ $workflow.name }}. Узел Resolve Redirect via Scraper.\n\n📋 Ошибка:\n{{ $('Resolve Redirect via Scraper').item.json.error }}\n\n🤖 Анализ ошибки:\n{{ $('GPT Error Analysis Resolve Redirect via Scraper').item.json.output[0].content[0].text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1200,
+        224
+      ],
+      "id": "5d2f580d-873c-4245-b035-7993b4d42952",
+      "name": "Send Error to Telegram (Resolve Redirect via Scraper)",
+      "webhookId": "5cba5c02-61b4-409a-b3e4-1192f5932410",
+      "credentials": {
+        "telegramApi": {
+          "id": "7sX2yrucrmBdFFtS",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Ты технический эксперт по N8N и API интеграциям.\n\nПроизошла ошибка в узле workflow. Проанализируй её и дай краткое объяснение на русском:\n1. Что случилось (простыми словами)\n2. Почему это могло произойти\n3. Что нужно проверить/исправить\n\nОшибка:\n{{ $json.error }}\n\nФормат ответа (максимум 3-4 предложения, без markdown форматирования)."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -848,
+        208
+      ],
+      "id": "a7b7d989-0972-4787-9a89-8400a5ce9513",
+      "name": "GPT Error Analysis Extract Real URL",
+      "credentials": {
+        "openAiApi": {
+          "id": "HeXxZmNT6spcKG3k",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "<TELEGRAM_ADMIN_CHAT_ID>",
+        "text": "=Поток {{ $workflow.name }}. Узел Extract Real URL.\n\n📋 Ошибка:\n{{ $('Extract Real URL').item.json.error }}\n\n🤖 Анализ ошибки:\n{{ $('GPT Error Analysis Extract Real URL').item.json.output[0].content[0].text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -576,
+        208
+      ],
+      "id": "ffbb078f-97fa-47cc-afa8-41e3e30e2d54",
+      "name": "Send Error to Telegram (Extract Real URL)",
+      "webhookId": "5cba5c02-61b4-409a-b3e4-1192f5932410",
+      "credentials": {
+        "telegramApi": {
+          "id": "7sX2yrucrmBdFFtS",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        144
+      ],
+      "id": "709bbb62-c338-4554-a4a5-f2bdceb3a54c",
+      "name": "Cool transition"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Ты технический эксперт по N8N и API интеграциям.\n\nПроизошла ошибка в узле workflow. Проанализируй её и дай краткое объяснение на русском:\n1. Что случилось (простыми словами)\n2. Почему это могло произойти\n3. Что нужно проверить/исправить\n\nОшибка:\n{{ $json.error }}\n\nФормат ответа (максимум 3-4 предложения, без markdown форматирования)."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        48,
+        416
+      ],
+      "id": "6de1650f-a08b-4897-8827-b97be43e05c6",
+      "name": "GPT Error Analysis Get Reddit JSON",
+      "credentials": {
+        "openAiApi": {
+          "id": "HeXxZmNT6spcKG3k",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "<TELEGRAM_ADMIN_CHAT_ID>",
+        "text": "=Поток {{ $workflow.name }}. Узел Get Reddit JSON.\n\n📋 Ошибка:\n{{ $('Get Reddit JSON').item.json.error }}\n\n🤖 Анализ ошибки:\n{{ $('GPT Error Analysis Get Reddit JSON').item.json.output[0].content[0].text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        320,
+        416
+      ],
+      "id": "db4e5882-e566-46fa-a096-9118ba37ae71",
+      "name": "Send Error to Telegram (Get Reddit JSON)",
+      "webhookId": "5cba5c02-61b4-409a-b3e4-1192f5932410",
+      "credentials": {
+        "telegramApi": {
+          "id": "7sX2yrucrmBdFFtS",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Ты технический эксперт по N8N и API интеграциям.\n\nПроизошла ошибка в узле workflow. Проанализируй её и дай краткое объяснение на русском:\n1. Что случилось (простыми словами)\n2. Почему это могло произойти\n3. Что нужно проверить/исправить\n\nОшибка:\n{{ $json.error }}\n\nФормат ответа (максимум 3-4 предложения, без markdown форматирования)."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        736,
+        400
+      ],
+      "id": "5eb96be3-4aa6-4ec9-ad46-dcd5bc50addf",
+      "name": "GPT Error Analysis Parse Content & Status",
+      "credentials": {
+        "openAiApi": {
+          "id": "HeXxZmNT6spcKG3k",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "<TELEGRAM_ADMIN_CHAT_ID>",
+        "text": "=Поток {{ $workflow.name }}. Узел Parse Content & Status.\n\n📋 Ошибка:\n{{ $('Parse Content & Status').item.json.error }}\n\n🤖 Анализ ошибки:\n{{ $('GPT Error Analysis Parse Content & Status').item.json.output[0].content[0].text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1008,
+        400
+      ],
+      "id": "6f814277-e9f2-468f-9e5b-916f926e9d43",
+      "name": "Send Error to Telegram (Parse Content & Status)",
+      "webhookId": "5cba5c02-61b4-409a-b3e4-1192f5932410",
+      "credentials": {
+        "telegramApi": {
+          "id": "7sX2yrucrmBdFFtS",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Ты технический эксперт по N8N и API интеграциям.\n\nПроизошла ошибка в узле workflow. Проанализируй её и дай краткое объяснение на русском:\n1. Что случилось (простыми словами)\n2. Почему это могло произойти\n3. Что нужно проверить/исправить\n\nОшибка:\n{{ $json.error }}\n\nФормат ответа (максимум 3-4 предложения, без markdown форматирования)."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        1648,
+        560
+      ],
+      "id": "20e3ca26-7ddf-43e9-8828-8b45ac56d78c",
+      "name": "GPT Error Analysis Save Result",
+      "credentials": {
+        "openAiApi": {
+          "id": "HeXxZmNT6spcKG3k",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "<TELEGRAM_ADMIN_CHAT_ID>",
+        "text": "=Поток {{ $workflow.name }}. Узел Save Result.\n\n📋 Ошибка:\n{{ $('Save Result GPT').item.json.error }}\n\n🤖 Анализ ошибки:\n{{ $('GPT Error Analysis Save Result').item.json.output[0].content[0].text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1968,
+        560
+      ],
+      "id": "1c25c553-1587-4f2a-a306-6e3444f6ab36",
+      "name": "Send Error to Telegram (Save Result)",
+      "webhookId": "5cba5c02-61b4-409a-b3e4-1192f5932410",
+      "retryOnFail": false,
+      "credentials": {
+        "telegramApi": {
+          "id": "7sX2yrucrmBdFFtS",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "<TELEGRAM_ADMIN_CHAT_ID>",
+        "text": "=Поток {{ $workflow.name }}.\n\nВсе имевшиеся ссылки обработаны.\n\nТаблица:\n`https://docs.google.com/spreadsheets/d/<GOOGLE_SHEET_ID>`",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1904,
+        176
+      ],
+      "id": "b802ce2c-07d0-4e06-8f7a-0d8586d0bdbe",
+      "name": "Success Message to TG",
+      "webhookId": "5cba5c02-61b4-409a-b3e4-1192f5932410",
+      "executeOnce": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "7sX2yrucrmBdFFtS",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2224,
+        560
+      ],
+      "id": "6c612324-26de-4335-8021-c531ee260de0",
+      "name": "Cool Transition"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "<GOOGLE_SHEET_ID>",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Post & Comment Tracker",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Parse Content & Status').item.json.row_number }}",
+            "Date": "={{ $('Parse Content & Status').item.json.t_date }}",
+            "Actual comment": "={{ $('Parse Content & Status').item.json.t_body }}",
+            "Type": "={{ $('Parse Content & Status').item.json.t_type }}",
+            "Status": "={{ $('Parse Content & Status').item.json.t_status }}",
+            "Description": "={{ $json.output[0].content[0].text }}",
+            "Upvotes": "={{ $('Parse Content & Status').item.json.t_ups }}",
+            "Comments": "={{ $('Parse Content & Status').item.json.t_comments }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Link",
+              "displayName": "Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Actual comment",
+              "displayName": "Actual comment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Description",
+              "displayName": "Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Upvotes",
+              "displayName": "Upvotes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Comments",
+              "displayName": "Comments",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ef34275a-38dc-4d16-a02d-e0698222a53b",
+      "name": "Save Result GPT",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1824,
+        336
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "UEP3suFgwRT2sq5y",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "<GOOGLE_SHEET_ID>",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Post & Comment Tracker",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -2640,
+        352
+      ],
+      "id": "175c61c2-8a7e-4192-b4c3-e336e3c47466",
+      "name": "Read Links",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "UEP3suFgwRT2sq5y",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.1",
+          "mode": "list",
+          "cachedResultName": "GPT-5.1"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Проанализируй этот контент с Reddit:\n{{ $json.ai_content }}\n\nТвоя задача — классифицировать его для столбца \"Description\".\n\nСТРОГИЙ ПОРЯДОК ПРОВЕРКИ (выполняй сверху вниз):\n\n1. ПРИОРИТЕТ 0 (УДАЛЕНИЕ): \n   Если текст содержит \"CONTENT REMOVED\", \"[removed]\", \"[deleted]\", \"[unavailable]\" или \"Removed by Reddit\" -> ВЕРНИ \"Content removed\". (Игнорируй всё остальное).\n\n2. ПРИОРИТЕТ 1 (ОШИБКИ):\n   Если видишь слово \"ERROR\" или \"SKIP\" -> ВЕРНИ \"Error\".\n\n3. ПРИОРИТЕТ 2 (ТИП ПОСТ):\n   Если TYPE: POST (и не удален) -> ВЕРНИ \"LLM/SEO\".\n\n4. ПРИОРИТЕТ 3 (ТИП КОММЕНТ):\n   Если TYPE: COMMENT или REPLY:\n   - Если текст упоминает \"<PROJECT_BRAND>\" (или рекомендует его) -> ВЕРНИ \"Recommendation\".\n   - Если текст выражает явное согласие -> ВЕРНИ \"Agreeing with recommendation\".\n   - Во всех остальных случаях -> ВЕРНИ \"Other helpful engagement\".\n\nВ ответ верни ТОЛЬКО одну фразу. (без кавычек)."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        336
+      ],
+      "id": "99c3f1a6-0608-4a35-b8a1-5326983af513",
+      "name": "GPT Classifyer",
+      "credentials": {
+        "openAiApi": {
+          "id": "HeXxZmNT6spcKG3k",
+          "name": "OpenAi account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Check if Short Link": {
+      "main": [
+        [
+          {
+            "node": "Resolve Redirect via Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Reddit JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Real URL": {
+      "main": [
+        [
+          {
+            "node": "Cool transition",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GPT Error Analysis Extract Real URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Unprocessed": {
+      "main": [
+        [
+          {
+            "node": "Loop: Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Links": {
+      "main": [
+        [
+          {
+            "node": "Success Message to TG",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check if Short Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Redirect via Scraper": {
+      "main": [
+        [
+          {
+            "node": "Extract Real URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GPT Error Analysis Resolve Redirect via Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Reddit JSON": {
+      "main": [
+        [
+          {
+            "node": "Parse Content & Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GPT Error Analysis Get Reddit JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Content & Status": {
+      "main": [
+        [
+          {
+            "node": "Wait 5 sec",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GPT Error Analysis Parse Content & Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5 sec": {
+      "main": [
+        [
+          {
+            "node": "GPT Classifyer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT Error Analysis Read Links": {
+      "main": [
+        [
+          {
+            "node": "Send Error to Telegram (Read Links)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT Error Analysis Resolve Redirect via Scraper": {
+      "main": [
+        [
+          {
+            "node": "Send Error to Telegram (Resolve Redirect via Scraper)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT Error Analysis Extract Real URL": {
+      "main": [
+        [
+          {
+            "node": "Send Error to Telegram (Extract Real URL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cool transition": {
+      "main": [
+        [
+          {
+            "node": "Get Reddit JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT Error Analysis Get Reddit JSON": {
+      "main": [
+        [
+          {
+            "node": "Send Error to Telegram (Get Reddit JSON)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT Error Analysis Parse Content & Status": {
+      "main": [
+        [
+          {
+            "node": "Send Error to Telegram (Parse Content & Status)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT Error Analysis Save Result": {
+      "main": [
+        [
+          {
+            "node": "Send Error to Telegram (Save Result)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Error to Telegram (Save Result)": {
+      "main": [
+        [
+          {
+            "node": "Cool Transition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cool Transition": {
+      "main": [
+        [
+          {
+            "node": "Loop: Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Result GPT": {
+      "main": [
+        [
+          {
+            "node": "Cool Transition",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GPT Error Analysis Save Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Links": {
+      "main": [
+        [
+          {
+            "node": "Filter: Unprocessed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GPT Error Analysis Read Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT Classifyer": {
+      "main": [
+        [
+          {
+            "node": "Save Result GPT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "53db480d-e424-44e1-b9ef-c426dffa0521",
+  "meta": {
+    "instanceId": "4ca2686d682bbda7f7ca89577ac50014ee569eaa31e678c39d435a26dec4cf59"
+  },
+  "id": "JZzaT7K4ag6ZgHlk",
+  "tags": [
+    {
+      "updatedAt": "2025-10-24T08:54:18.240Z",
+      "createdAt": "2025-10-24T08:54:18.240Z",
+      "id": "bDmErdQqXSBWy24w",
+      "name": "Cryptogeek"
+    },
+    {
+      "updatedAt": "2026-04-06T07:12:05.263Z",
+      "createdAt": "2026-04-06T07:12:05.263Z",
+      "id": "qjqTMhzbeCaVUOep",
+      "name": "MainWF"
+    },
+    {
+      "updatedAt": "2025-10-29T10:43:21.936Z",
+      "createdAt": "2025-10-29T10:43:21.936Z",
+      "id": "vrzXppwTL7dYmLNx",
+      "name": "Production"
+    }
+  ]
+}
