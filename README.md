@@ -20,6 +20,7 @@
 - ИИ-классификация результата;
 - запись результата обратно в Google Sheets;
 - обработка ошибок парсинга и недоступных страниц.
+- Telegram-уведомления администратора об ошибках и статусах.
 
 ## Мой вклад
 
@@ -33,10 +34,12 @@
 - JavaScript
 - Reddit JSON
 - ScraperAPI
-- OpenAI
+- OpenAI для анализа ошибок
 - Google Sheets
 - HTTP-запросы
-- 
+- Telegram Bot API
+- JSON
+
 ## Что лежит в репозитории
 
 - `Reddit SEO Links & Data.json` — экспорт n8n-сценария.
